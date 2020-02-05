@@ -220,8 +220,14 @@ void TaskLeaderLine::setUiPrimary()
     ui->pbTracker->setText(QString::fromUtf8("Pick points"));
     ui->pbTracker->setEnabled(true);
     ui->pbCancelEdit->setEnabled(true);
-   int aSize = getPrefArrowStyle() + 1;
+    int aSize = getPrefArrowStyle() + 1;
     ui->cboxStartSym->setCurrentIndex(aSize);
+
+    ui->dsbWeight->setUnit(Base::Unit::Length);
+    ui->dsbWeight->setMinimum(0);
+    ui->dsbWeight->setValue(prefWeight());
+
+    ui->cpLineColor->setColor(prefLineColor().asValue<QColor>());
 }
 
 //switch widgets related to ViewProvider on/off
@@ -297,7 +303,7 @@ void TaskLeaderLine::createLeaderFeature(std::vector<Base::Vector3d> converted)
             App::Color ac;
             ac.setValue<QColor>(ui->cpLineColor->color());
             leadVP->Color.setValue(ac);
-            leadVP->LineWidth.setValue(ui->dsbWeight->value());
+            leadVP->LineWidth.setValue(ui->dsbWeight->rawValue());
             leadVP->LineStyle.setValue(ui->cboxStyle->currentIndex());
         }
     }
@@ -324,7 +330,7 @@ void TaskLeaderLine::updateLeaderFeature(void)
     App::Color ac;
     ac.setValue<QColor>(ui->cpLineColor->color());
     m_lineVP->Color.setValue(ac);
-    m_lineVP->LineWidth.setValue(ui->dsbWeight->value());
+    m_lineVP->LineWidth.setValue(ui->dsbWeight->rawValue());
     m_lineVP->LineStyle.setValue(ui->cboxStyle->currentIndex());
 
     Gui::Command::updateActive();
@@ -656,6 +662,28 @@ int TaskLeaderLine::getPrefArrowStyle()
     return style;
 }
 
+double TaskLeaderLine::prefWeight() const
+{
+    Base::Reference<ParameterGrp> hGrp = App::GetApplication().GetUserParameter()
+                                        .GetGroup("BaseApp")->GetGroup("Preferences")->
+                                        GetGroup("Mod/TechDraw/Decorations");
+    std::string lgName = hGrp->GetASCII("LineGroup","FC 0.70mm");
+    auto lg = TechDraw::LineGroup::lineGroupFactory(lgName);
+    double weight = lg->getWeight("Thin");
+    delete lg;                                   //Coverity CID 174670
+    return weight;
+}
+
+App::Color TaskLeaderLine::prefLineColor(void)
+{
+    Base::Reference<ParameterGrp> hGrp = App::GetApplication().GetUserParameter().
+                                 GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("Mod/TechDraw/Markups");
+    App::Color result;
+    result.setPackedValue(hGrp->GetUnsigned("Color", 0x00000000));
+    return result;
+}
+
+
 //******************************************************************************
 
 bool TaskLeaderLine::accept()
@@ -730,7 +758,7 @@ TaskDlgLeaderLine::TaskDlgLeaderLine(TechDraw::DrawView* baseFeat,
     : TaskDialog()
 {
     widget  = new TaskLeaderLine(baseFeat,page);
-    taskbox = new Gui::TaskView::TaskBox(Gui::BitmapFactory().pixmap("actions/techdraw-mline"),
+    taskbox = new Gui::TaskView::TaskBox(Gui::BitmapFactory().pixmap("actions/techdraw-LeaderLine"),
                                              widget->windowTitle(), true, 0);
     taskbox->groupLayout()->addWidget(widget);
     Content.push_back(taskbox);
@@ -740,7 +768,7 @@ TaskDlgLeaderLine::TaskDlgLeaderLine(TechDrawGui::ViewProviderLeader* leadVP)
     : TaskDialog()
 {
     widget  = new TaskLeaderLine(leadVP);
-    taskbox = new Gui::TaskView::TaskBox(Gui::BitmapFactory().pixmap("actions/techdraw-mline"),
+    taskbox = new Gui::TaskView::TaskBox(Gui::BitmapFactory().pixmap("actions/techdraw-LeaderLine"),
                                              widget->windowTitle(), true, 0);
     taskbox->groupLayout()->addWidget(widget);
     Content.push_back(taskbox);

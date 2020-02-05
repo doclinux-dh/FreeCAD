@@ -196,6 +196,19 @@ void TaskRichAnno::setUiPrimary()
         std::string baseName = m_baseFeat->getNameInDocument();
         ui->leBaseView->setText(Base::Tools::fromStdString(baseName));
     }
+    ui->dsbWidth->setUnit(Base::Unit::Length);
+    ui->dsbWidth->setMinimum(0);
+    ui->dsbWidth->setValue(prefWeight());
+
+    ui->cpFrameColor->setColor(prefLineColor().asValue<QColor>());
+    // set a default font size, use for this the preferences setting
+    MRichTextEdit mre;
+    ui->teAnnoText->setFontPointSize(mre.getDefFontSizeNum());
+    // set a placeholder text to inform the user
+    // (QTextEdit has no placeholderText property in Qt4)
+#if QT_VERSION >= 0x050200
+    ui->teAnnoText->setPlaceholderText(tr("Input the annotation text directly or start the rich text editor"));
+#endif
 }
 
 void TaskRichAnno::enableTextUi(bool b) 
@@ -204,6 +217,8 @@ void TaskRichAnno::enableTextUi(bool b)
     ui->teAnnoText->setEnabled(b);
 }
 
+//switch widgets related to ViewProvider on/off
+//there is no ViewProvider until some time after feature is created.
 void TaskRichAnno::enableVPUi(bool b)
 {
     Q_UNUSED(b);
@@ -229,6 +244,12 @@ void TaskRichAnno::setUiEdit()
         ui->teAnnoText->setHtml(QString::fromUtf8(m_annoFeat->AnnoText.getValue()));
         ui->dsbMaxWidth->setValue(m_annoFeat->MaxWidth.getValue());
         ui->cbShowFrame->setChecked(m_annoFeat->ShowFrame.getValue());
+    }
+
+    if (m_annoVP != nullptr) {
+        ui->cpFrameColor->setColor(m_annoVP->LineColor.getValue().asValue<QColor>());
+        ui->dsbWidth->setValue(m_annoVP->LineWidth.getValue());
+        ui->cFrameStyle->setCurrentIndex(m_annoVP->LineStyle.getValue());
     }
 }
 
@@ -277,6 +298,28 @@ void TaskRichAnno::onEditorExit(void)
     m_rte = nullptr;
 }
 
+double TaskRichAnno::prefWeight() const
+{
+    Base::Reference<ParameterGrp> hGrp = App::GetApplication().GetUserParameter()
+                                        .GetGroup("BaseApp")->GetGroup("Preferences")->
+                                        GetGroup("Mod/TechDraw/Decorations");
+    std::string lgName = hGrp->GetASCII("LineGroup","FC 0.70mm");
+    auto lg = TechDraw::LineGroup::lineGroupFactory(lgName);
+    double weight = lg->getWeight("Graphic");
+    delete lg;                                   //Coverity CID 174670
+    return weight;
+}
+
+App::Color TaskRichAnno::prefLineColor(void)
+{
+    Base::Reference<ParameterGrp> hGrp = App::GetApplication().GetUserParameter().
+                                 GetGroup("BaseApp")->GetGroup("Preferences")->GetGroup("Mod/TechDraw/Markups");
+    App::Color result;
+    result.setPackedValue(hGrp->GetUnsigned("Color", 0x00000000));
+    return result;
+}
+
+
 //******************************************************************************
 void TaskRichAnno::createAnnoFeature()
 {
@@ -309,6 +352,18 @@ void TaskRichAnno::createAnnoFeature()
         m_annoFeat->Y.setValue(Rez::appX(vTemp.y));
     }
 
+    if (m_annoFeat != nullptr) {
+        Gui::ViewProvider* vp = QGIView::getViewProvider(m_annoFeat);
+        auto annoVP = dynamic_cast<ViewProviderRichAnno*>(vp);
+        if (annoVP != nullptr) {
+            App::Color ac;
+            ac.setValue<QColor>(ui->cpFrameColor->color());
+            annoVP->LineColor.setValue(ac);
+            annoVP->LineWidth.setValue(ui->dsbWidth->rawValue());
+            annoVP->LineStyle.setValue(ui->cFrameStyle->currentIndex());
+        }
+    }
+
     Gui::Command::updateActive();
     Gui::Command::commitCommand();
 
@@ -327,6 +382,11 @@ void TaskRichAnno::updateAnnoFeature()
 //    Base::Console().Message("TRA::updateAnnoFeature()\n");
     Gui::Command::openCommand("Edit Anno");
     commonFeatureUpdate();
+    App::Color ac;
+    ac.setValue<QColor>(ui->cpFrameColor->color());
+    m_annoVP->LineColor.setValue(ac);
+    m_annoVP->LineWidth.setValue(ui->dsbWidth->rawValue());
+    m_annoVP->LineStyle.setValue(ui->cFrameStyle->currentIndex());
 
     Gui::Command::commitCommand();
     m_annoFeat->requestPaint();
